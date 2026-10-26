@@ -1,16 +1,6 @@
-// Seed do servidor backend do Document Management System.
-//
-// Este arquivo é apenas um ponto de partida mínimo. Ao longo do workshop você
-// vai usar o Agent Mode do GitHub Copilot para construir as camadas:
-//   - routes/       (definição das rotas)
-//   - controllers/  (entrada HTTP e validação)
-//   - services/     (regras de negócio)
-//   - repositories/ (persistência: arquivos locais + metadados em memória)
-//
-// Restrição do projeto: uploads são gravados no filesystem local da aplicação
-// usando multer com diskStorage. Não utilize provedores externos.
-
 const express = require('express');
+const multer = require('multer');
+const documentsRouter = require('./routes/documents.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +11,36 @@ app.use(express.json());
 // /documents/:id/download) serão implementadas durante o Passo 2.
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+app.use('/', documentsRouter);
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: { code: 'NOT_FOUND', message: 'Recurso não encontrado.' },
+  });
+});
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  const isMulterError = error instanceof multer.MulterError;
+  const statusCode = isMulterError
+    ? error.code === 'LIMIT_FILE_SIZE' ? 413 : 400
+    : error.statusCode || 500;
+  const code = isMulterError
+    ? error.code === 'LIMIT_FILE_SIZE' ? 'FILE_TOO_LARGE' : 'INVALID_UPLOAD'
+    : error.code || 'INTERNAL_ERROR';
+  const message = statusCode >= 500
+    ? 'Não foi possível processar a solicitação.'
+    : isMulterError && error.code === 'LIMIT_FILE_SIZE'
+      ? 'O arquivo excede o tamanho máximo permitido.'
+      : isMulterError
+        ? 'O upload é inválido.'
+        : error.message;
+
+  return res.status(statusCode).json({ error: { code, message } });
 });
 
 if (require.main === module) {
